@@ -46,7 +46,6 @@ public class ParsePage extends RecursiveAction {
     @Override
     protected void compute() {
         try {
-            System.out.println("depth: " + depth);
             if (depth == 0) return;
             List<ParsePage> childTasks = new ArrayList<>();
 
