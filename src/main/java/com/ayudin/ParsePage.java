@@ -21,6 +21,7 @@ public class ParsePage extends RecursiveAction {
     private final ConcurrentHashMap<String, Boolean> visitedPages;
     private ConcurrentHashMap<String, Integer> wordsMap;
     private final int depth;
+    private final int RETRIES = 3;
 
     public ParsePage(String url, ConcurrentHashMap<String, Boolean> visitedPages, ConcurrentHashMap<String, Integer> wordsMap, int depth) {
         this.url = url;
@@ -29,26 +30,40 @@ public class ParsePage extends RecursiveAction {
         this.depth = depth;
     }
 
+    private Document load() throws IOException{
+        for (int retry = 0; retry < RETRIES; retry++) {
+            try {
+                return Jsoup.connect(url).get();
+            } catch (IOException e) {
+                //try again
+            }
+        }
+        throw new IOException("Cannot load:" + url);
+
+    }
+
 
     @Override
     protected void compute() {
         try {
+            System.out.println("depth: " + depth);
             if (depth == 0) return;
             List<ParsePage> childTasks = new ArrayList<>();
-            String text;
+
             Document page;
+            String text;
             try {
-                 page = Jsoup.connect(url).get();
-                 text = page.text();
+                page = load();
+                text = page.text();
             } catch (NullPointerException | IOException ioe){
-                //System.err.println("cannot load text: " + url);
+                System.err.println("cannot load text: " + url);
                 return;
             }
 
             countWords(text);
             for (String link : getUniqueLinks(page)) {
                 ParsePage newTask = new ParsePage(link, visitedPages, this.wordsMap, depth - 1);
-                System.out.println("forked: " + link);
+
                 newTask.fork();
                 childTasks.add(newTask);
             }
@@ -80,8 +95,17 @@ public class ParsePage extends RecursiveAction {
 
         List<String> uniqueLinks = internalLinks.stream()
                 .distinct()
-                .filter(link ->
-                        visitedPages.putIfAbsent(link, true) == null  //putIfAbsent returns null if link was not in visitedPages
+                .filter(link -> {
+                    String hostPath = "";
+                    try {
+                        URL url = new URL(link);
+                        hostPath += url.getHost();
+                        hostPath += url.getPath();
+                    } catch (Exception e){
+                        return false;
+                    }
+                    return visitedPages.putIfAbsent(hostPath, true) == null;  //putIfAbsent returns null if link was not in visitedPages
+                    }
                 )
                 .collect(Collectors.toList());
         return uniqueLinks;
